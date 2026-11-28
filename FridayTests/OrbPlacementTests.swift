@@ -17,11 +17,42 @@ struct OrbPlacementTests {
         #expect(point == CGPoint(x: 1440 - 14 - 58, y: 870 - 14 - 58))
     }
 
-    @Test func avoidsBrowserToolbarAcrossTheTop() {
+    @Test func avoidsBrowserToolbarAcrossTheTopWithoutUsingTheBottom() {
         let browser = CGRect(x: 0, y: 0, width: 1440, height: 870)
         let busy = OrbPlacement.busyZones(windows: [browser], isDesktop: false, visible: visible)
         let point = OrbPlacement.automaticOrigin(visible: visible, size: size, busy: busy)
-        #expect(point == OrbPlacement.origin(of: .bottomRight, in: visible, size: size))
+        #expect(point == OrbPlacement.origin(of: .rightMiddle, in: visible, size: size))
+        #expect(point.y > visible.minY + OrbPlacement.margin)
+    }
+
+    @Test func topCenterIsUsedWhenBothCornersAreBusy() {
+        let left = CGRect(x: 0, y: 0, width: 500, height: 870)
+        let right = CGRect(x: 940, y: 0, width: 500, height: 870)
+        let busy = OrbPlacement.busyZones(windows: [left, right], isDesktop: false, visible: visible)
+        let point = OrbPlacement.automaticOrigin(visible: visible, size: size, busy: busy)
+        #expect(point == OrbPlacement.origin(of: .topCenter, in: visible, size: size))
+        #expect(point == CGPoint(x: 720 - 29, y: 870 - 14 - 58))
+    }
+
+    @Test func noFreeAnchorPicksTheLeastBusyTopAnchor() {
+        func orbRect(_ anchor: OrbPlacement.Anchor) -> CGRect {
+            CGRect(origin: OrbPlacement.origin(of: anchor, in: visible, size: size), size: size)
+        }
+        // Every anchor is fully covered except for a small sliver over top-left.
+        let topLeft = orbRect(.topLeft)
+        let busy =
+            [OrbPlacement.Anchor.topRight, .topCenter, .rightMiddle, .leftMiddle].map {
+                orbRect($0).insetBy(dx: -10, dy: -10)
+            } + [CGRect(x: topLeft.minX, y: topLeft.minY, width: 5, height: 5)]
+        let point = OrbPlacement.automaticOrigin(visible: visible, size: size, busy: busy)
+        #expect(point == OrbPlacement.origin(of: .topLeft, in: visible, size: size))
+    }
+
+    @Test func noAnchorSitsAtTheBottom() {
+        for anchor in OrbPlacement.Anchor.allCases {
+            let point = OrbPlacement.origin(of: anchor, in: visible, size: size)
+            #expect(point.y > visible.minY + OrbPlacement.margin)
+        }
     }
 
     @Test func smallWindowOnTheLeftKeepsTopRightFree() {
@@ -36,7 +67,7 @@ struct OrbPlacementTests {
         let browser = CGRect(x: 0, y: 0, width: 900, height: 870)
         let busy = OrbPlacement.busyZones(windows: [browser], isDesktop: true, visible: visible)
         let point = OrbPlacement.automaticOrigin(visible: visible, size: size, busy: busy)
-        #expect(point == OrbPlacement.origin(of: .bottomLeft, in: visible, size: size))
+        #expect(point == OrbPlacement.origin(of: .leftMiddle, in: visible, size: size))
     }
 
     @Test func desktopAvoidsIconColumnOnTheRight() {

@@ -15,21 +15,24 @@ enum OrbPlacement {
     /// Width of the column on the right of the desktop where macOS places icons.
     static let desktopIconColumn: CGFloat = 170
 
+    /// Automatic search order. There are no bottom anchors: the bottom edge
+    /// belongs to the Dock and its menus.
     enum Anchor: CaseIterable {
-        case topRight, topLeft, bottomRight, bottomLeft, rightMiddle, leftMiddle
+        case topRight, topLeft, topCenter, rightMiddle, leftMiddle
+
+        static let top: [Anchor] = [.topRight, .topLeft, .topCenter]
     }
 
     static func origin(of anchor: Anchor, in visible: CGRect, size: CGSize) -> CGPoint {
         let left = visible.minX + margin
         let right = visible.maxX - margin - size.width
         let top = visible.maxY - margin - size.height
-        let bottom = visible.minY + margin
+        let center = visible.midX - size.width / 2
         let middle = visible.midY - size.height / 2
         switch anchor {
         case .topRight: return CGPoint(x: right, y: top)
         case .topLeft: return CGPoint(x: left, y: top)
-        case .bottomRight: return CGPoint(x: right, y: bottom)
-        case .bottomLeft: return CGPoint(x: left, y: bottom)
+        case .topCenter: return CGPoint(x: center, y: top)
         case .rightMiddle: return CGPoint(x: right, y: middle)
         case .leftMiddle: return CGPoint(x: left, y: middle)
         }
@@ -54,14 +57,25 @@ enum OrbPlacement {
         return zones
     }
 
-    /// The first anchor whose rectangle avoids every busy zone; top-right if none is free.
+    /// The first anchor whose rectangle avoids every busy zone. If none is free,
+    /// the top anchor that overlaps busy zones the least (ties go to search order).
     static func automaticOrigin(visible: CGRect, size: CGSize, busy: [CGRect]) -> CGPoint {
-        for anchor in Anchor.allCases {
-            let point = origin(of: anchor, in: visible, size: size)
-            let rect = CGRect(origin: point, size: size).insetBy(dx: -4, dy: -4)
-            if !busy.contains(where: { $0.intersects(rect) }) { return point }
+        func padded(_ anchor: Anchor) -> CGRect {
+            CGRect(origin: origin(of: anchor, in: visible, size: size), size: size).insetBy(dx: -4, dy: -4)
         }
-        return origin(of: .topRight, in: visible, size: size)
+        for anchor in Anchor.allCases where !busy.contains(where: { $0.intersects(padded(anchor)) }) {
+            return origin(of: anchor, in: visible, size: size)
+        }
+        func overlap(_ anchor: Anchor) -> CGFloat {
+            let rect = padded(anchor)
+            return busy.reduce(0) { total, zone in
+                let shared = zone.intersection(rect)
+                return shared.isNull ? total : total + shared.width * shared.height
+            }
+        }
+        var best = Anchor.topRight
+        for anchor in Anchor.top where overlap(anchor) < overlap(best) { best = anchor }
+        return origin(of: best, in: visible, size: size)
     }
 
     /// Keeps a dropped orb on screen and snaps it to nearby edges.
